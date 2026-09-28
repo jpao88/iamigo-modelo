@@ -9,11 +9,29 @@ ESPERANDO_PRIORIDADE = "esperando_prioridade"
 
 
 class ConversaTarefa:
-    def __init__(self, dados: dict, usuario: str):
+    def __init__(
+        self,
+        dados: dict = None,
+        usuario: str = None,
+        estado: str = None,
+        tarefa: dict = None,
+        persistir_tarefa=None
+    ):
         self.dados = dados
         self.usuario = usuario
-        self.estado = ESPERANDO_MENSAGEM
-        self.tarefa = {}
+        self.estado = estado or ESPERANDO_MENSAGEM
+        self.tarefa = tarefa or {}
+        self.persistir_tarefa = persistir_tarefa or self._persistir_no_console
+
+    def _persistir_no_console(self, categoria, titulo, prioridade, prazo):
+        core_tarefas.adicionar_tarefa(
+            self.dados,
+            self.usuario,
+            categoria,
+            titulo,
+            prioridade=prioridade,
+            prazo=prazo
+        )
 
     def esta_cadastrando(self) -> bool:
         return self.estado != ESPERANDO_MENSAGEM
@@ -122,14 +140,7 @@ class ConversaTarefa:
         prazo = self.tarefa["prazo"]
         prioridade = self.tarefa["prioridade"]
 
-        core_tarefas.adicionar_tarefa(
-            self.dados,
-            self.usuario,
-            categoria,
-            titulo,
-            prioridade=prioridade,
-            prazo=prazo
-        )
+        self.persistir_tarefa(categoria, titulo, prioridade, prazo)
 
         categoria_exibida = {
             "tarefas_diarias": "Rotina diária",

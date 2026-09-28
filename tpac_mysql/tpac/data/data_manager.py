@@ -1,34 +1,15 @@
-import os
 from typing import Dict, Any
 
-import mysql.connector
-from dotenv import load_dotenv
-
-load_dotenv()
-
-def conectar():
-    """
-    Abre uma conexão com o banco MySQL.
-
-    Antes de executar o sistema, confira o arquivo .env:
-    DB_HOST=localhost
-    DB_USER=root
-    DB_PASSWORD=sua_senha
-    DB_NAME=tpac_db
-    """
-    return mysql.connector.connect(
-        host=os.getenv("DB_HOST", "localhost"),
-        user=os.getenv("DB_USER", "root"),
-        password=os.getenv("DB_PASSWORD", ""),
-        database=os.getenv("DB_NAME", "tpac_db"),
-        port=int(os.getenv("DB_PORT", "3306"))
-    )
+from config.database import SessionLocal
+from models.usuario import Usuario
+from models.tarefa import Tarefa
+from models.passo import Passo
 
 
 def carregar_dados() -> Dict[str, Any]:
     """
-    Busca os usuários, tarefas e passos no MySQL e monta a mesma estrutura
-    que antes era lida do arquivo tpac_users.json.
+    Busca os usuários, tarefas e passos no MySQL (via SQLAlchemy) e monta a
+    mesma estrutura que antes era lida do arquivo tpac_users.json.
 
     Estrutura retornada:
     {
@@ -41,133 +22,162 @@ def carregar_dados() -> Dict[str, Any]:
     """
     dados = {}
 
-    conexao = conectar()
-    cursor = conexao.cursor(dictionary=True)
+    with SessionLocal() as session:
+        usuarios = session.query(Usuario).order_by(Usuario.nome).all()
 
-    cursor.execute("""
-        SELECT id, nome, estilo_instrucao
-        FROM usuarios
-        ORDER BY nome
-    """)
-    usuarios = cursor.fetchall()
-
-    for usuario in usuarios:
-        nome = usuario["nome"]
-
-        dados[nome] = {
-            "preferencias": {
-                "estilo_instrucao": usuario["estilo_instrucao"]
-            },
-            "tarefas_diarias": [],
-            "tarefas_educacionais": []
-        }
-
-        cursor.execute("""
-            SELECT id, titulo, descricao, prioridade, prazo, concluida, tipo
-            FROM tarefas
-            WHERE usuario_id = %s
-            ORDER BY id
-        """, (usuario["id"],))
-        tarefas = cursor.fetchall()
-
-        for tarefa in tarefas:
-            tarefa_dict = {
-                "titulo": tarefa["titulo"],
-                "descricao": tarefa["descricao"],
-                "prioridade": tarefa["prioridade"],
-                "prazo": tarefa["prazo"].isoformat() if tarefa["prazo"] else None,
-                "concluida": bool(tarefa["concluida"]),
-                "passos": []
+        for usuario in usuarios:
+            dados[usuario.nome] = {
+                "preferencias": {
+                    "estilo_instrucao": usuario.estilo_instrucao
+                },
+                "tarefas_diarias": [],
+                "tarefas_educacionais": []
             }
 
-            cursor.execute("""
-                SELECT texto, concluido
-                FROM passos
-                WHERE tarefa_id = %s
-                ORDER BY ordem
-            """, (tarefa["id"],))
-            passos = cursor.fetchall()
+            tarefas = (
+                session.query(Tarefa)
+                .filter(Tarefa.usuario_id == usuario.id)
+                .order_by(Tarefa.id)
+                .all()
+            )
 
-            for passo in passos:
-                tarefa_dict["passos"].append({
-                    "texto": passo["texto"],
-                    "concluido": bool(passo["concluido"])
-                })
+            for tarefa in tarefas:
+                tarefa_dict = {
+                    "titulo": tarefa.titulo,
+                    "descricao": tarefa.descricao,
+                    "prioridade": tarefa.prioridade,
+                    "prazo": tarefa.prazo.isoformat() if tarefa.prazo else None,
+                    "concluida": bool(tarefa.concluida),
+                    "passos": []
+                }
 
-            dados[nome][tarefa["tipo"]].append(tarefa_dict)
+                passos = (
+                    session.query(Passo)
+                    .filter(Passo.tarefa_id == tarefa.id)
+                    .order_by(Passo.ordem)
+                    .all()
+                )
 
-    cursor.close()
-    conexao.close()
+                for passo in passos:
+                    tarefa_dict["passos"].append({
+                        "texto": passo.texto,
+                        "concluido": bool(passo.concluido)
+                    })
+
+                dados[usuario.nome][tarefa.tipo].append(tarefa_dict)
 
     return dados
 
 
 def salvar_dados(dados: Dict[str, Any]) -> None:
     """
-    Salva no MySQL a estrutura completa do sistema.
+    Salva no MySQL (via SQLAlchemy) a estrutura completa do sistema, SEM
+    apagar tudo primeiro. Em vez de TRUNCATE + reinsert, compara o que já
+    existe no banco com o dicionário recebido e aplica só as diferenças:
 
-    Para manter o código simples e didático para os alunos, esta função:
-    1. apaga os dados antigos;
-    2. recria usuários, tarefas e passos com base no dicionário recebido.
+    - usuários são identificados pelo nome (único);
+    - tarefas são identificadas por (tipo, titulo) dentro de cada usuário;
+    - passos são identificados pela posição (ordem) dentro de cada tarefa.
 
-    Em sistemas profissionais, normalmente usaríamos INSERT, UPDATE e DELETE
-    específicos para cada ação.
+    Isso evita apagar dados criados por outras vias (como a API) que não
+    estejam presentes no dicionário em memória da tela de console.
     """
-    conexao = conectar()
-    cursor = conexao.cursor()
+    with SessionLocal() as session:
+        try:
+            usuarios_existentes = {
+                usuario.nome: usuario
+                for usuario in session.query(Usuario).all()
+            }
+            nomes_no_dict = set(dados.keys())
 
-    try:
-        cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
-        cursor.execute("TRUNCATE TABLE passos")
-        cursor.execute("TRUNCATE TABLE tarefas")
-        cursor.execute("TRUNCATE TABLE usuarios")
-        cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
+            for nome, info_usuario in dados.items():
+                estilo = info_usuario.get("preferencias", {}).get(
+                    "estilo_instrucao", "direto"
+                )
 
-        for nome, info_usuario in dados.items():
-            estilo = info_usuario.get("preferencias", {}).get("estilo_instrucao", "direto")
+                usuario = usuarios_existentes.get(nome)
 
-            cursor.execute("""
-                INSERT INTO usuarios (nome, estilo_instrucao)
-                VALUES (%s, %s)
-            """, (nome, estilo))
+                if usuario is None:
+                    usuario = Usuario(nome=nome, estilo_instrucao=estilo)
+                    session.add(usuario)
+                    session.flush()
+                else:
+                    usuario.estilo_instrucao = estilo
 
-            usuario_id = cursor.lastrowid
+                tarefas_existentes = {
+                    (tarefa.tipo, tarefa.titulo): tarefa
+                    for tarefa in session.query(Tarefa)
+                    .filter(Tarefa.usuario_id == usuario.id)
+                    .all()
+                }
+                chaves_tarefas_no_dict = set()
 
-            for tipo in ["tarefas_diarias", "tarefas_educacionais"]:
-                for tarefa in info_usuario.get(tipo, []):
-                    cursor.execute("""
-                        INSERT INTO tarefas
-                            (usuario_id, tipo, titulo, descricao, prioridade, prazo, concluida)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """, (
-                        usuario_id,
-                        tipo,
-                        tarefa.get("titulo", ""),
-                        tarefa.get("descricao"),
-                        tarefa.get("prioridade", "media"),
-                        tarefa.get("prazo"),
-                        bool(tarefa.get("concluida", False))
-                    ))
+                for tipo in ["tarefas_diarias", "tarefas_educacionais"]:
+                    for tarefa_info in info_usuario.get(tipo, []):
+                        titulo = tarefa_info.get("titulo", "")
+                        chave = (tipo, titulo)
+                        chaves_tarefas_no_dict.add(chave)
 
-                    tarefa_id = cursor.lastrowid
+                        tarefa = tarefas_existentes.get(chave)
 
-                    for ordem, passo in enumerate(tarefa.get("passos", []), start=1):
-                        cursor.execute("""
-                            INSERT INTO passos (tarefa_id, texto, concluido, ordem)
-                            VALUES (%s, %s, %s, %s)
-                        """, (
-                            tarefa_id,
-                            passo.get("texto", ""),
-                            bool(passo.get("concluido", False)),
-                            ordem
-                        ))
+                        if tarefa is None:
+                            tarefa = Tarefa(
+                                usuario_id=usuario.id,
+                                tipo=tipo,
+                                titulo=titulo,
+                                descricao=tarefa_info.get("descricao"),
+                                prioridade=tarefa_info.get("prioridade", "media"),
+                                prazo=tarefa_info.get("prazo"),
+                                concluida=bool(tarefa_info.get("concluida", False))
+                            )
+                            session.add(tarefa)
+                            session.flush()
+                        else:
+                            tarefa.descricao = tarefa_info.get("descricao")
+                            tarefa.prioridade = tarefa_info.get("prioridade", "media")
+                            tarefa.prazo = tarefa_info.get("prazo")
+                            tarefa.concluida = bool(tarefa_info.get("concluida", False))
 
-        conexao.commit()
+                        passos_existentes = {
+                            passo.ordem: passo
+                            for passo in session.query(Passo)
+                            .filter(Passo.tarefa_id == tarefa.id)
+                            .all()
+                        }
+                        ordens_no_dict = set()
 
-    except Exception:
-        conexao.rollback()
-        raise
+                        for ordem, passo_info in enumerate(
+                            tarefa_info.get("passos", []), start=1
+                        ):
+                            ordens_no_dict.add(ordem)
+                            passo = passos_existentes.get(ordem)
 
-    finally:
-        cursor.close()
-        conexao.close()
+                            if passo is None:
+                                passo = Passo(
+                                    tarefa_id=tarefa.id,
+                                    texto=passo_info.get("texto", ""),
+                                    concluido=bool(passo_info.get("concluido", False)),
+                                    ordem=ordem
+                                )
+                                session.add(passo)
+                            else:
+                                passo.texto = passo_info.get("texto", "")
+                                passo.concluido = bool(passo_info.get("concluido", False))
+
+                        for ordem_existente, passo_existente in passos_existentes.items():
+                            if ordem_existente not in ordens_no_dict:
+                                session.delete(passo_existente)
+
+                for chave_existente, tarefa_existente in tarefas_existentes.items():
+                    if chave_existente not in chaves_tarefas_no_dict:
+                        session.delete(tarefa_existente)
+
+            for nome_existente, usuario_existente in usuarios_existentes.items():
+                if nome_existente not in nomes_no_dict:
+                    session.delete(usuario_existente)
+
+            session.commit()
+
+        except Exception:
+            session.rollback()
+            raise

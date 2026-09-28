@@ -1,0 +1,691 @@
+{
+  "exported_at": "2026-09-25T00:39:36.876Z",
+  "project": "IAmigo (tpac_mysql/tpac)",
+  "readiness": 100,
+  "audit": {
+    "project": "IAmigo (tpac_mysql/tpac)",
+    "summary": "Diagnóstico inicial: El back-end tiene una sola vertical completamente construida y conectada a MySQL vía SQLAlchemy: usuarios (modelo, repository, service, controller, rutas FastAPI). El resto del dominio del producto -tarefas, passos, y el asistente conversacional/IA- existe solo en la capa de consola (main.py + data_manager.py con mysql.connector crudo) y no tiene ninguna ruta HTTP expuesta. Además conviven dos estrategias de acceso a datos incompatibles para las mismas tablas, lo cual es un riesgo serio antes de conectar un front-end.\n\nEstado final: las 15 operaciones que necesita el front están expuestas vía FastAPI con Controller → Service → Repository → SQLAlchemy, cada una probada con éxito, falla y confirmación en MySQL. Los 7 issues globales fueron corregidos: acceso a datos unificado en SQLAlchemy (data_manager.py sin mysql.connector), guardado no destructivo (INSERT/UPDATE/DELETE puntuales en vez de TRUNCATE), logging con traceback de errores técnicos, formato de respuesta único {\"dados\": ...}, tests reales de UsuarioService (7 tests OK) y CORS configurado con orígenes explícitos. El flujo conversacional (/conversa) se rediseñó para que el estado viaje en el cliente y no en la memoria del servidor.",
+    "resources": [
+      {
+        "name": "usuarios",
+        "front_required": true,
+        "why_front_needs_it": "El front necesita listar perfiles existentes y crear un perfil nuevo para poder autenticarse o seleccionar un usuario activo.",
+        "table": "usuarios",
+        "files": [
+          "models/usuario.py",
+          "repositories/usuario_repository.py",
+          "services/usuario_service.py",
+          "controllers/usuario_controller.py",
+          "api/rotas_usuarios.py"
+        ],
+        "operations": [
+          {
+            "id": "usuarios_get_list",
+            "label": "Listar usuários",
+            "method": "GET",
+            "path": "/usuarios",
+            "required": true,
+            "status": "ready",
+            "expected_success": 200,
+            "needs_db_check": false,
+            "evidence": "Auditado con spot-check en /docs y SELECT en MySQL: coincidencia total entre API y banco. Cubierto por tests/test_usuario_controller.py.",
+            "problem": ""
+          },
+          {
+            "id": "usuarios_post_create",
+            "label": "Criar usuário",
+            "method": "POST",
+            "path": "/usuarios",
+            "required": true,
+            "status": "ready",
+            "expected_success": 201,
+            "needs_db_check": false,
+            "evidence": "Auditado probando las 4 validaciones (nombre vacío, corto, estilo inválido, duplicado) en /docs y SELECT. Respuesta unificada a {\"dados\": Usuario} con id. Reglas cubiertas por tests/test_usuario_service.py.",
+            "problem": ""
+          },
+          {
+            "id": "usuarios_get_single",
+            "label": "Buscar um usuário específico",
+            "method": "GET",
+            "path": "/usuarios/{usuario_id}",
+            "required": true,
+            "status": "ready",
+            "expected_success": 200,
+            "needs_db_check": true,
+            "evidence": "Ruta nueva con UsuarioService.buscar_usuario reutilizando buscar_por_id. Probado con usuario existente (200) e inexistente (404), confirmado con SELECT.",
+            "problem": ""
+          },
+          {
+            "id": "usuarios_put_update",
+            "label": "Atualizar perfil (nome/estilo)",
+            "method": "PUT",
+            "path": "/usuarios/{usuario_id}",
+            "required": false,
+            "status": "ready",
+            "expected_success": 200,
+            "needs_db_check": true,
+            "evidence": "Ruta nueva con UsuarioService.atualizar_usuario (mismas reglas que la creación; permite mantener el propio nombre). Probado con éxito (200), usuario inexistente (404) y nombre vacío (422), confirmado con SELECT.",
+            "problem": ""
+          },
+          {
+            "id": "usuarios_delete",
+            "label": "Excluir usuário",
+            "method": "DELETE",
+            "path": "/usuarios/{usuario_id}",
+            "required": false,
+            "status": "ready",
+            "expected_success": 204,
+            "needs_db_check": true,
+            "evidence": "Ruta nueva con ON DELETE CASCADE. Probado con usuario descartable (204) e inexistente (404); SELECT confirmó la eliminación.",
+            "problem": ""
+          }
+        ]
+      },
+      {
+        "name": "tarefas",
+        "front_required": true,
+        "why_front_needs_it": "Es el recurso central del producto: el front necesita listar las tareas de un usuario, crearlas y marcar/desmarcar como concluídas.",
+        "table": "tarefas",
+        "files": [
+          "data/data_manager.py",
+          "core/tarefas.py",
+          "database.sql"
+        ],
+        "operations": [
+          {
+            "id": "tarefas_get_list",
+            "label": "Listar tarefas do usuário",
+            "method": "GET",
+            "path": "/usuarios/{usuario_id}/tarefas",
+            "required": true,
+            "status": "ready",
+            "expected_success": 200,
+            "needs_db_check": true,
+            "evidence": "Ruta nueva con TarefaController → TarefaService → TarefaRepository (SQLAlchemy). Probado con usuario existente (200) e inexistente (404), confirmado con SELECT.",
+            "problem": ""
+          },
+          {
+            "id": "tarefas_post_create",
+            "label": "Criar tarefa",
+            "method": "POST",
+            "path": "/usuarios/{usuario_id}/tarefas",
+            "required": true,
+            "status": "ready",
+            "expected_success": 201,
+            "needs_db_check": true,
+            "evidence": "INSERT puntual vía SQLAlchemy, sin salvar_dados(). Probado con éxito (201), usuario inexistente (404) y título vacío (422), confirmado con SELECT.",
+            "problem": ""
+          },
+          {
+            "id": "tarefas_patch_toggle_status",
+            "label": "Alternar status concluída",
+            "method": "PATCH",
+            "path": "/usuarios/{usuario_id}/tarefas/{tarefa_id}",
+            "required": true,
+            "status": "ready",
+            "expected_success": 200,
+            "needs_db_check": true,
+            "evidence": "Identifica la tarea por id de banco, no por índice. Probado con éxito (200), tarea inexistente (404) y tarea de otro usuario (404), confirmado con SELECT.",
+            "problem": ""
+          }
+        ]
+      },
+      {
+        "name": "passos",
+        "front_required": true,
+        "why_front_needs_it": "El front necesita mostrar y marcar los pasos generados por la IA para cada tarea, que es una funcionalidad central de accesibilidad del produto.",
+        "table": "passos",
+        "files": [
+          "data/data_manager.py",
+          "core/tarefas.py"
+        ],
+        "operations": [
+          {
+            "id": "passos_get_list",
+            "label": "Listar passos de uma tarefa",
+            "method": "GET",
+            "path": "/usuarios/{usuario_id}/tarefas/{tarefa_id}/passos",
+            "required": true,
+            "status": "ready",
+            "expected_success": 200,
+            "needs_db_check": true,
+            "evidence": "Modelo Passo y PassoRepository nuevos, orquestados por TarefaService. Probado con lista vacía (200), tarea inexistente (404) y tarea ajena (404), confirmado con SELECT.",
+            "problem": ""
+          },
+          {
+            "id": "passos_post_gerar_ia",
+            "label": "Gerar passos com IA",
+            "method": "POST",
+            "path": "/usuarios/{usuario_id}/tarefas/{tarefa_id}/passos/gerar",
+            "required": true,
+            "status": "ready",
+            "expected_success": 201,
+            "needs_db_check": false,
+            "evidence": "Reutiliza gerar_passos_tarefa() sin modificarlo; fallo de IA devuelve 503. Probado con Gemini real (201), sin API key (503) y tarea inexistente (404), confirmado con SELECT.",
+            "problem": ""
+          },
+          {
+            "id": "passos_patch_toggle",
+            "label": "Alternar status concluído",
+            "method": "PATCH",
+            "path": "/usuarios/{usuario_id}/tarefas/{tarefa_id}/passos/{passo_id}",
+            "required": true,
+            "status": "ready",
+            "expected_success": 200,
+            "needs_db_check": true,
+            "evidence": "Identifica el paso por id de banco (passo_id). Probado con éxito (200), paso inexistente (404) y paso de otra tarea (404), confirmado con SELECT.",
+            "problem": ""
+          },
+          {
+            "id": "passos_delete",
+            "label": "Excluir passo",
+            "method": "DELETE",
+            "path": "/usuarios/{usuario_id}/tarefas/{tarefa_id}/passos/{passo_id}",
+            "required": false,
+            "status": "ready",
+            "expected_success": 204,
+            "needs_db_check": true,
+            "evidence": "DELETE puntual por passo_id. Probado con éxito (204), paso inexistente (404) y paso de otra tarea (404); SELECT confirmó que solo se eliminó el paso indicado.",
+            "problem": ""
+          }
+        ]
+      },
+      {
+        "name": "assistente_ia",
+        "front_required": true,
+        "why_front_needs_it": "El front necesita poder mandarle un mensaje libre al usuario y recibir una respuesta o una tarea interpretada automáticamente, que es la propuesta de valor principal de IAmigo.",
+        "table": null,
+        "files": [
+          "core/ia_service.py",
+          "core/interpretador.py",
+          "core/conversa.py"
+        ],
+        "operations": [
+          {
+            "id": "ia_post_interpretar_mensagem",
+            "label": "Interpretar mensagem do usuário",
+            "method": "POST",
+            "path": "/usuarios/{usuario_id}/mensagens",
+            "required": true,
+            "status": "ready",
+            "expected_success": 200,
+            "needs_db_check": false,
+            "evidence": "Reutiliza interpretar_mensagem() sin modificarlo; no persiste datos. Probado con intención de tarea, con pregunta y con usuario inexistente (404).",
+            "problem": ""
+          },
+          {
+            "id": "ia_post_responder_pergunta",
+            "label": "Responder pergunta geral",
+            "method": "POST",
+            "path": "/usuarios/{usuario_id}/perguntas",
+            "required": true,
+            "status": "ready",
+            "expected_success": 200,
+            "needs_db_check": false,
+            "evidence": "Reutiliza obter_resposta_ia() sin modificarlo; fallo de IA devuelve 503. Probado con dos preguntas reales (200) y usuario inexistente (404).",
+            "problem": ""
+          },
+          {
+            "id": "ia_conversa_stateful",
+            "label": "Fluxo conversacional de cadastro de tarefa (prazo/prioridade)",
+            "method": "POST",
+            "path": "/usuarios/{usuario_id}/conversa",
+            "required": false,
+            "status": "ready",
+            "expected_success": 200,
+            "needs_db_check": false,
+            "evidence": "Arquitectura corregida: el estado de la conversación viaja en el cliente y la tarea final se guarda con TarefaService.criar_tarefa(). Probado con flujo completo de 3 llamadas (200), usuario inexistente (404) y estado inválido (422), confirmado con SELECT.",
+            "problem": ""
+          }
+        ]
+      }
+    ],
+    "global_issues": [
+      {
+        "id": "issue_dual_data_access",
+        "title": "Dos estrategias de acceso a datos incompatibles sobre las mismas tablas",
+        "severity": "high",
+        "files": [
+          "config/database.py",
+          "repositories/usuario_repository.py",
+          "data/data_manager.py"
+        ],
+        "evidence": "usuarios se maneja con SQLAlchemy ORM (SessionLocal, modelo Usuario) mientras que tarefas y passos -y también usuarios, indirectamente, a través de salvar_dados()- se manejan con mysql.connector crudo en data_manager.py.",
+        "suggested_direction": "Definir una sola vía de acceso a datos para todo el dominio antes de construir las rutas de tarefas/passos, migrando data_manager.py al mismo patrón Repository con SQLAlchemy que ya usa usuarios."
+      },
+      {
+        "id": "issue_destructive_save",
+        "title": "salvar_dados() borra y reescribe todas las tablas en cada guardado",
+        "severity": "high",
+        "files": [
+          "data/data_manager.py"
+        ],
+        "evidence": "salvar_dados() ejecuta TRUNCATE TABLE sobre passos, tarefas y usuarios y luego reinserta todo el diccionario completo en cada llamada.",
+        "suggested_direction": "Reemplazar por operaciones puntuales (INSERT/UPDATE/DELETE específicos) antes de exponer cualquier endpoint de escritura de tarefas o passos, para evitar pérdida de datos concurrente."
+      },
+      {
+        "id": "issue_no_api_for_core_domain",
+        "title": "Ausencia total de rutas HTTP para tarefas, passos e IA",
+        "severity": "high",
+        "files": [
+          "api/rotas_usuarios.py"
+        ],
+        "evidence": "El único archivo dentro de api/ es rotas_usuarios.py; no existe rotas_tarefas.py, rotas_passos.py ni ninguna ruta relacionada con core/ia_service.py o core/conversa.py.",
+        "suggested_direction": "Priorizar la construcción de Controller/Service/Repository para tarefas siguiendo el mismo patrón ya validado en usuarios, antes de tocar IA o conversación."
+      },
+      {
+        "id": "issue_swallowed_exception",
+        "title": "Excepción técnica silenciada sin registro (log)",
+        "severity": "medium",
+        "files": [
+          "controllers/usuario_controller.py"
+        ],
+        "evidence": "El bloque except Exception en criar_perfil() captura cualquier error y devuelve un mensaje genérico 'Não foi possível concluir a operação', sin loguear ni reexponer el error original.",
+        "suggested_direction": "Agregar logging del error real antes de devolver el mensaje genérico, para poder diagnosticar fallas en producción."
+      },
+      {
+        "id": "issue_inconsistent_response_shape",
+        "title": "Formato de respuesta inconsistente entre GET y POST de usuarios",
+        "severity": "low",
+        "files": [
+          "api/rotas_usuarios.py",
+          "controllers/usuario_controller.py"
+        ],
+        "evidence": "GET /usuarios envuelve el resultado en {'dados': [...]}, mientras que POST /usuarios devuelve directamente el diccionario interno del controller con claves internas como 'tipo' y 'sucesso'.",
+        "suggested_direction": "Definir un formato de respuesta único (por ejemplo, siempre devolver el recurso creado/listado) antes de que el front tenga que parsear dos formas distintas."
+      },
+      {
+        "id": "issue_duplicate_test_file",
+        "title": "Archivo de test duplicado con nombre equivocado",
+        "severity": "low",
+        "files": [
+          "tests/test_usuario_service.py"
+        ],
+        "evidence": "tests/test_usuario_service.py tiene exactamente el mismo contenido que tests/test_usuario_controller.py (importa y testea UsuarioController, no UsuarioService).",
+        "suggested_direction": "Corregir o reescribir este archivo para que realmente pruebe UsuarioService de forma aislada, ya que hoy no hay cobertura real de esa capa."
+      },
+      {
+        "id": "issue_no_cors",
+        "title": "Sin configuración visible de CORS en la API",
+        "severity": "medium",
+        "files": [
+          "api_app.py"
+        ],
+        "evidence": "api_app.py no registra CORSMiddleware ni ningún origen permitido.",
+        "suggested_direction": "Agregar CORSMiddleware con los orígenes del front antes de intentar consumir la API desde un navegador en otro puerto/dominio."
+      }
+    ],
+    "priority_order": [
+      "issue_dual_data_access",
+      "issue_destructive_save",
+      "issue_no_api_for_core_domain",
+      "tarefas_get_list",
+      "tarefas_post_create",
+      "tarefas_patch_toggle_status",
+      "passos_get_list",
+      "passos_post_gerar_ia",
+      "passos_patch_toggle",
+      "usuarios_get_single",
+      "issue_no_cors",
+      "issue_inconsistent_response_shape",
+      "issue_swallowed_exception",
+      "ia_post_interpretar_mensagem",
+      "ia_post_responder_pergunta",
+      "ia_conversa_stateful",
+      "issue_duplicate_test_file",
+      "usuarios_put_update",
+      "usuarios_delete",
+      "passos_delete"
+    ]
+  },
+  "missions": {
+    "op:usuarios_get_list": {
+      "checks": [
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:usuarios_post_create": {
+      "checks": [
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:usuarios_get_single": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:usuarios_put_update": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:usuarios_delete": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:tarefas_get_list": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:tarefas_post_create": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:tarefas_patch_toggle_status": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:passos_get_list": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:passos_post_gerar_ia": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:passos_patch_toggle": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:passos_delete": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:ia_post_interpretar_mensagem": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:ia_post_responder_pergunta": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "op:ia_conversa_stateful": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "issue:issue_dual_data_access": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "issue:issue_destructive_save": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "issue:issue_no_api_for_core_domain": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "issue:issue_swallowed_exception": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "issue:issue_inconsistent_response_shape": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "issue:issue_duplicate_test_file": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    },
+    "issue:issue_no_cors": {
+      "checks": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ready": true
+    }
+  },
+  "base": {
+    "1": true,
+    "2": true,
+    "3": true,
+    "4": true,
+    "5": true,
+    "6": true,
+    "7": true,
+    "8": true,
+    "9": true,
+    "10": true,
+    "11": true,
+    "12": true,
+    "13": true,
+    "14": true
+  },
+  "contract": "# Contrato da API — IAmigo (tpac_mysql/tpac)\n\n## Convenciones generales\n\n| Tema | Regla |\n|---|---|\n| URL base (desarrollo) | `http://127.0.0.1:8000` |\n| Documentación interactiva | `http://127.0.0.1:8000/docs` |\n| Formato | JSON (`Content-Type: application/json`) |\n| Autenticación | No hay. El front elige un perfil activo y usa su `id` en las rutas. |\n| Éxito con contenido | `{\"dados\": ...}` |\n| Éxito sin contenido | `204 No Content`, sin body |\n| Error de negocio | `{\"detail\": \"mensagem\"}` |\n| Error de validación de FastAPI | `422` con `{\"detail\": [ ... ]}` (lista). Ocurre si falta un campo obligatorio o un tipo es inválido, por ejemplo una fecha mal formada. |\n| Fechas | Envío y respuesta en ISO: `prazo` como `AAAA-MM-DD`, `criado_em` como `AAAA-MM-DDTHH:MM:SS` |\n| CORS | Orígenes permitidos por defecto: `http://localhost:5500`, `http://127.0.0.1:5500`, `http://localhost:5173`, `http://127.0.0.1:5173`. Configurable con `CORS_ORIGINS` en `.env`. |\n\n### Códigos de estado usados\n\n| Código | Significado en esta API |\n|---|---|\n| `200` | Operación correcta con datos |\n| `201` | Recurso creado |\n| `204` | Recurso eliminado |\n| `404` | Usuario, tarea o paso inexistente, **o que pertenece a otro usuario/tarea** |\n| `422` | Regla de negocio incumplida o body inválido |\n| `503` | El servicio de IA (Gemini) no está disponible |\n\n### Objetos\n\n**Usuario**\n```json\n{ \"id\": 6, \"nome\": \"Matheus\", \"estilo_instrucao\": \"direto\", \"criado_em\": \"2026-09-22T21:50:02\" }\n```\n- `estilo_instrucao`: `\"direto\"` o `\"detalhado\"`\n\n**Tarefa**\n```json\n{\n  \"id\": 4, \"usuario_id\": 6, \"tipo\": \"tarefas_diarias\", \"titulo\": \"Arrumar a Casa\",\n  \"descricao\": null, \"prioridade\": \"media\", \"prazo\": null, \"concluida\": false,\n  \"criado_em\": \"2026-09-24T19:11:17\"\n}\n```\n- `tipo`: `\"tarefas_diarias\"` o `\"tarefas_educacionais\"`\n- `prioridade`: `\"baixa\"`, `\"media\"` o `\"alta\"`\n\n**Passo**\n```json\n{ \"id\": 9, \"tarefa_id\": 4, \"texto\": \"Coletar lixo e itens soltos\", \"concluido\": false, \"ordem\": 1 }\n```\n\n---\n\n## usuarios\nEl front necesita listar los perfiles existentes, crear uno nuevo, editarlo o eliminarlo, y seleccionar el perfil activo con el que trabajará.\n\n### GET /usuarios — Listar usuários\n- **Estado:** FRONT-READY\n- **Éxito:** `200` → `{\"dados\": [Usuario, ...]}`, ordenados por `nome`\n- **Errores:** ninguno de negocio\n- **Evidencia:** auditado con spot-check en `/docs` y SELECT en MySQL; coincidencia total entre API y banco. Cubierto por `tests/test_usuario_controller.py`.\n\n### GET /usuarios/{usuario_id} — Buscar um usuário específico\n- **Estado:** FRONT-READY\n- **Éxito:** `200` → `{\"dados\": Usuario}`\n- **Errores:** `404` \"Usuário não encontrado.\"\n- **Evidencia:** ruta nueva con `UsuarioService.buscar_usuario`, que reutiliza `buscar_por_id` del repository. Probado con `id=1` (200) y `id=9999` (404), confirmado con SELECT.\n\n### POST /usuarios — Criar usuário\n- **Estado:** FRONT-READY\n- **Body:**\n```json\n{ \"nome\": \"Ana\", \"estilo_instrucao\": \"direto\" }\n```\n  `estilo_instrucao` es opcional (por defecto `\"direto\"`).\n- **Éxito:** `201` → `{\"dados\": Usuario}` (incluye el `id` creado)\n- **Errores (`422`):**\n  - \"O nome não pode ficar vazio.\"\n  - \"O nome precisa ter pelo menos 3 caracteres.\"\n  - \"O estilo deve ser 'direto' ou 'detalhado'.\"\n  - \"Já existe um perfil com esse nome.\"\n- **Evidencia:** auditado probando las 4 validaciones en `/docs` y SELECT. Respuesta unificada al formato `{\"dados\": ...}` con `id`. Reglas cubiertas por `tests/test_usuario_service.py`.\n\n### PUT /usuarios/{usuario_id} — Atualizar perfil\n- **Estado:** FRONT-READY\n- **Body:** (ambos campos obligatorios)\n```json\n{ \"nome\": \"Matheus Silva\", \"estilo_instrucao\": \"detalhado\" }\n```\n- **Éxito:** `200` → `{\"dados\": Usuario}`\n- **Errores:**\n  - `404` \"Usuário não encontrado.\"\n  - `422` con las mismas reglas de `POST /usuarios`. Mantener el propio nombre está permitido; usar el nombre de **otro** usuario devuelve \"Já existe um perfil com esse nome.\"\n- **Evidencia:** probado con éxito (200), usuario inexistente (404) y nombre vacío (422), confirmado con SELECT. Regla del propio nombre cubierta por `tests/test_usuario_service.py`.\n\n### DELETE /usuarios/{usuario_id} — Excluir usuário\n- **Estado:** FRONT-READY\n- **Éxito:** `204`, sin body\n- **Errores:** `404` \"Usuário não encontrado.\"\n- **⚠️ Importante:** por `ON DELETE CASCADE`, eliminar un usuario elimina también **todas sus tareas y pasos**. El front debería pedir confirmación antes de llamar a esta ruta.\n- **Evidencia:** probado con un usuario descartable (204) e inexistente (404); SELECT confirmó que el usuario ya no existe.\n\n---\n\n## tarefas\nEs el recurso central del producto: el front necesita listar las tareas de un usuario, crearlas y marcarlas o desmarcarlas como concluidas.\n\n### GET /usuarios/{usuario_id}/tarefas — Listar tarefas do usuário\n- **Estado:** FRONT-READY\n- **Éxito:** `200` → `{\"dados\": [Tarefa, ...]}`, ordenadas por `id`. Lista vacía si el usuario no tiene tareas.\n- **Errores:** `404` \"Usuário não encontrado.\"\n- **Evidencia:** ruta nueva con `TarefaController` → `TarefaService` → `TarefaRepository` (SQLAlchemy). Probado con usuario existente (200) e inexistente (404), confirmado con SELECT.\n\n### POST /usuarios/{usuario_id}/tarefas — Criar tarefa\n- **Estado:** FRONT-READY\n- **Body:**\n```json\n{\n  \"tipo\": \"tarefas_diarias\",\n  \"titulo\": \"Estudar SQL\",\n  \"descricao\": null,\n  \"prioridade\": \"media\",\n  \"prazo\": \"2026-10-15\"\n}\n```\n  Obligatorios: `tipo`, `titulo`. Opcionales: `descricao` (null), `prioridade` (`\"media\"`), `prazo` (null, formato `AAAA-MM-DD`).\n- **Éxito:** `201` → `{\"dados\": Tarefa}`\n- **Errores:**\n  - `404` \"Usuário não encontrado.\"\n  - `422` \"O título não pode ficar vazio.\"\n  - `422` \"O tipo deve ser 'tarefas_diarias' ou 'tarefas_educacionais'.\"\n  - `422` \"A prioridade deve ser 'baixa', 'media' ou 'alta'.\"\n  - `422` (lista de FastAPI) si `prazo` no tiene formato `AAAA-MM-DD`\n- **Evidencia:** INSERT puntual vía SQLAlchemy, sin el `salvar_dados()` destructivo. Probado con éxito (201), usuario inexistente (404) y título vacío (422), confirmado con SELECT.\n\n### PATCH /usuarios/{usuario_id}/tarefas/{tarefa_id} — Alternar status concluída\n- **Estado:** FRONT-READY\n- **Body:** ninguno. Cada llamada invierte `concluida` (`false` → `true` → `false`).\n- **Éxito:** `200` → `{\"dados\": Tarefa}`\n- **Errores:** `404` \"Usuário não encontrado.\" o \"Tarefa não encontrada.\" (también si la tarea pertenece a otro usuario)\n- **Evidencia:** identifica la tarea por `id` de banco, no por índice de lista. Probado con éxito (200), tarea inexistente (404) y tarea de otro usuario (404), confirmado con SELECT.\n\n---\n\n## passos\nEl front necesita mostrar, generar con IA, marcar y eliminar los pasos de cada tarea, que es una funcionalidad central de accesibilidad del producto.\n\n### GET /usuarios/{usuario_id}/tarefas/{tarefa_id}/passos — Listar passos de uma tarefa\n- **Estado:** FRONT-READY\n- **Éxito:** `200` → `{\"dados\": [Passo, ...]}`, ordenados por `ordem`. Lista vacía si no hay pasos.\n- **Errores:** `404` \"Usuário não encontrado.\" o \"Tarefa não encontrada.\" (también si la tarea es de otro usuario)\n- **Evidencia:** modelo `Passo` y `PassoRepository` nuevos, orquestados por `TarefaService`. Probado con lista vacía (200), tarea inexistente (404) y tarea ajena (404), confirmado con SELECT.\n\n### POST /usuarios/{usuario_id}/tarefas/{tarefa_id}/passos/gerar — Gerar passos com IA\n- **Estado:** FRONT-READY\n- **Body:** ninguno. Usa el `titulo` de la tarea.\n- **Éxito:** `201` → `{\"dados\": [Passo, ...]}` (normalmente 3 o 4 pasos nuevos, guardados en el banco)\n- **Errores:**\n  - `404` \"Usuário não encontrado.\" o \"Tarefa não encontrada.\"\n  - `503` si la IA no está disponible (por ejemplo, falta `GEMINI_API_KEY`)\n- **Nota:** cada llamada **agrega** pasos nuevos; no reemplaza los existentes.\n- **Evidencia:** reutiliza `gerar_passos_tarefa()` de `core/ia_service.py` sin modificarlo. Probado con Gemini real (201), sin API key (503) y tarea inexistente (404), confirmado con SELECT.\n\n### PATCH /usuarios/{usuario_id}/tarefas/{tarefa_id}/passos/{passo_id} — Alternar status concluído\n- **Estado:** FRONT-READY\n- **Body:** ninguno. Cada llamada invierte `concluido`.\n- **Éxito:** `200` → `{\"dados\": Passo}`\n- **Errores:** `404` \"Usuário não encontrado.\", \"Tarefa não encontrada.\" o \"Passo não encontrado.\" (también si el paso pertenece a otra tarea)\n- **Evidencia:** identifica el paso por `id` de banco (`passo_id`), no por índice. Probado con éxito (200), paso inexistente (404) y paso de otra tarea (404), confirmado con SELECT.\n\n### DELETE /usuarios/{usuario_id}/tarefas/{tarefa_id}/passos/{passo_id} — Excluir passo\n- **Estado:** FRONT-READY\n- **Éxito:** `204`, sin body\n- **Errores:** `404` \"Usuário não encontrado.\", \"Tarefa não encontrada.\" o \"Passo não encontrado.\"\n- **Nota:** los pasos restantes **no** se renumeran; puede quedar un hueco en `ordem` (por ejemplo 1, 2, 3 sin el 4). El front debe ordenar por `ordem`, no asumir números consecutivos.\n- **Evidencia:** probado con éxito (204), paso inexistente (404) y paso de otra tarea (404); SELECT confirmó que solo se eliminó el paso indicado.\n\n---\n\n## assistente_ia\nEl front necesita que el usuario pueda escribir un mensaje libre y recibir una respuesta o una tarea interpretada automáticamente, que es la propuesta de valor principal de IAmigo.\n\n### POST /usuarios/{usuario_id}/mensagens — Interpretar mensagem do usuário\n- **Estado:** FRONT-READY\n- **Body:**\n```json\n{ \"texto\": \"preciso estudar matemática amanhã\" }\n```\n- **Éxito:** `200`\n```json\n{ \"dados\": { \"intencao\": \"registrar_tarefa\", \"titulo\": \"Estudar matemática amanhã\", \"categoria\": \"tarefas_educacionais\" } }\n```\n  Si no detecta una tarea: `{\"dados\": {\"intencao\": \"pergunta\", \"titulo\": null, \"categoria\": null}}`\n- **Errores:** `404` \"Usuário não encontrado.\"\n- **Nota:** solo clasifica el texto; **no guarda nada** en el banco. No usa Gemini.\n- **Evidencia:** reutiliza `interpretar_mensagem()` de `core/interpretador.py` sin modificarlo. Probado con intención de tarea, con pregunta y con usuario inexistente.\n\n### POST /usuarios/{usuario_id}/perguntas — Responder pergunta geral\n- **Estado:** FRONT-READY\n- **Body:**\n```json\n{ \"texto\": \"o que é uma variável em programação?\" }\n```\n- **Éxito:** `200` → `{\"dados\": [\"línea 1\", \"línea 2\", ...]}`. La respuesta se adapta al `estilo_instrucao` del usuario.\n- **Errores:**\n  - `404` \"Usuário não encontrado.\"\n  - `503` si la IA no está disponible\n- **Nota:** no guarda la pregunta ni la respuesta.\n- **Evidencia:** reutiliza `obter_resposta_ia()` de `core/ia_service.py` sin modificarlo. Probado con dos preguntas reales (200) y usuario inexistente (404).\n\n### POST /usuarios/{usuario_id}/conversa — Cadastro de tarefa por conversa\n- **Estado:** FRONT-READY\n- **Cómo funciona:** el servidor **no guarda** el estado de la conversación. El front debe reenviar en cada llamada el `estado` y la `tarefa` que recibió en la respuesta anterior (como `tarefa_parcial`).\n- **Body:**\n```json\n{ \"mensagem\": \"preciso lavar o carro\", \"estado\": null, \"tarefa_parcial\": null }\n```\n- **Éxito:** `200`\n```json\n{\n  \"dados\": {\n    \"respostas\": [\"📝 Entendi o que você precisa fazer!\", \"📌 Lavar o carro\", \"Qual é o prazo?\", \"...\"],\n    \"estado\": \"esperando_prazo\",\n    \"tarefa\": { \"titulo\": \"Lavar o carro\", \"categoria\": \"tarefas_diarias\", \"prazo\": null, \"prioridade\": \"media\" }\n  }\n}\n```\n- **Flujo:**\n\n| Paso | `estado` enviado | `mensagem` esperada | `estado` devuelto |\n|---|---|---|---|\n| 1 | `null` | Texto con una tarea (\"preciso ...\") | `esperando_prazo` |\n| 2 | `esperando_prazo` | `DD/MM/AAAA` o `sem prazo` | `esperando_prioridade` |\n| 3 | `esperando_prioridade` | `1`/`2`/`3` o `baixa`/`media`/`alta` | `esperando_mensagem` (tarea guardada) |\n\n  - En cualquier paso, `cancelar` reinicia el flujo sin guardar.\n  - Si el prazo o la prioridad son inválidos, responde `200` con un mensaje de ayuda y **mantiene el mismo estado**.\n  - **⚠️ Cuando la respuesta trae `\"estado\": \"esperando_mensagem\"`, la siguiente llamada debe enviar `\"estado\": null`.** Enviar `\"esperando_mensagem\"` devuelve `422` \"Estado de conversa inválido.\"\n- **Errores:**\n  - `404` \"Usuário não encontrado.\"\n  - `422` \"Estado de conversa inválido.\"\n  - `422` \"Não consegui identificar uma tarefa nessa mensagem.\" (paso 1 sin intención de tarea)\n- **Evidencia:** se corrigió la arquitectura de `ConversaTarefa`, que guardaba el estado en memoria del proceso: ahora el estado viaja en el cliente. La tarea final se guarda con `TarefaService.criar_tarefa()`. Probado con el flujo completo de 3 llamadas, usuario inexistente y estado inválido, confirmado con SELECT.\n\n---\n\n## Limitaciones conocidas\n\n1. **Fallas técnicas sin código `500`.** Si falla la base de datos, la mayoría de las rutas devuelven el mensaje \"Não foi possível concluir a operação.\" con `404` o `422` en vez de `500`. El detalle queda registrado en la terminal del servidor. Excepción: `GET /usuarios` sí devuelve `500`.\n2. **Eliminación en cascada.** `DELETE /usuarios/{id}` elimina todas las tareas y pasos del usuario.\n3. **Sin autenticación.** Cualquier cliente con acceso a la API puede operar sobre cualquier `usuario_id`.\n4. **`ordem` de pasos no consecutivo** después de eliminar pasos.\n"
+}

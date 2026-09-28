@@ -2,6 +2,7 @@ from ui.utils import exibir_cabecalho, exibir_barra_status, exibir_progresso
 from data.data_manager import carregar_dados, salvar_dados
 import core.tarefas as core_tarefas
 import core.ia_service as ia_service
+from controllers.usuario_controller import UsuarioController
 
 from core.interpretador import interpretar_mensagem
 from core.conversa import ConversaTarefa
@@ -13,7 +14,9 @@ def criar_usuario_menu(dados: dict):
         input("\nNão consegui identificar seu nome. Tente novamente. (ENTER)")
         return
 
-    if nome in dados:
+    controller = UsuarioController()
+
+    if nome in controller.listar_perfis():
         input(f"\nJá encontrei um cadastro com o nome '{nome}'. Tente novamente para seguirmos! (ENTER)")
         return
 
@@ -23,6 +26,11 @@ def criar_usuario_menu(dados: dict):
     print("2. Um guia mais detalhado, explicando cada etapa")
     pref = input("Opção: ").strip()
     estilo = "direto" if pref == "1" else "detalhado"
+
+    resultado = controller.criar_perfil(nome, estilo)
+    if not resultado["sucesso"]:
+        input(f"\n{resultado['mensagem']} (ENTER)")
+        return
 
     dados[nome] = {
         "preferencias": {"estilo_instrucao": estilo},
