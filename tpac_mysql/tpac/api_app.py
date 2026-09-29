@@ -34,7 +34,7 @@ app.add_middleware(
     allow_origins=origens_permitidas,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(usuarios_router)

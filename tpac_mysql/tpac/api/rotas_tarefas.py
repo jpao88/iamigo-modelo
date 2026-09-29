@@ -1,9 +1,10 @@
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from api.dependencias import obter_usuario_autenticado
 from controllers.tarefa_controller import TarefaController
 
 router = APIRouter(
@@ -23,7 +24,10 @@ class NovaTarefa(BaseModel):
 
 
 @router.get("")
-def listar_tarefas(usuario_id: int):
+def listar_tarefas(
+    usuario_id: int,
+    usuario_autenticado=Depends(obter_usuario_autenticado)
+):
     resposta = controller.listar_tarefas(usuario_id)
 
     if not resposta["sucesso"]:

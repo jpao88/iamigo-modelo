@@ -58,3 +58,23 @@ def gerar_token_acesso(usuario_id: int, nome: str):
 
     token = jwt.encode(payload, segredo, algorithm=ALGORITMO_TOKEN)
     return token, minutos * 60
+
+
+
+def validar_token_acesso(token: str) -> int:
+    """Valida assinatura e expiração. Devolve o id do usuário (sub)."""
+    segredo = os.getenv("JWT_SECRET")
+
+    if not segredo:
+        raise RuntimeError("JWT_SECRET não configurado no .env.")
+
+    try:
+        payload = jwt.decode(
+            token,
+            segredo,
+            algorithms=[ALGORITMO_TOKEN],
+            options={"require": ["sub", "exp"]}
+        )
+        return int(payload["sub"])
+    except (jwt.InvalidTokenError, ValueError):
+        raise ValueError("Token inválido ou expirado.")
