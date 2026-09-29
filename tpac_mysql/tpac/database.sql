@@ -22,6 +22,7 @@ CREATE TABLE usuarios (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(100) NOT NULL UNIQUE,
     estilo_instrucao ENUM('direto', 'detalhado') NOT NULL DEFAULT 'direto',
+    senha_hash VARCHAR(255) NULL,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

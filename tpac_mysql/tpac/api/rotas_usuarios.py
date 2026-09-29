@@ -16,6 +16,7 @@ controller = UsuarioController()
 class NovoUsuario(BaseModel):
     nome: str
     estilo_instrucao: str = "direto"
+    senha: Optional[str] = None
 
 
 class AtualizarUsuario(BaseModel):
@@ -37,10 +38,23 @@ class MensagemConversa(BaseModel):
     tarefa_parcial: Optional[dict] = None
 
 
+def usuario_publico(usuario):
+    """Lista branca dos campos que podem sair da API. O senha_hash nunca sai."""
+    return {
+        "id": usuario.id,
+        "nome": usuario.nome,
+        "estilo_instrucao": usuario.estilo_instrucao,
+        "criado_em": usuario.criado_em
+    }
+
+
 @router.get("")
 def listar_usuarios():
     return {
-        "dados": controller.listar_perfis()
+        "dados": [
+            usuario_publico(usuario)
+            for usuario in controller.listar_perfis()
+        ]
     }
 
 
@@ -55,7 +69,7 @@ def buscar_usuario(usuario_id: int):
         )
 
     return {
-        "dados": resposta["dados"]
+        "dados": usuario_publico(resposta["dados"])
     }
 
 
@@ -63,7 +77,8 @@ def buscar_usuario(usuario_id: int):
 def criar_usuario(dados: NovoUsuario):
     resposta = controller.criar_perfil(
         dados.nome,
-        dados.estilo_instrucao
+        dados.estilo_instrucao,
+        dados.senha
     )
 
     if not resposta["sucesso"]:
@@ -73,7 +88,7 @@ def criar_usuario(dados: NovoUsuario):
         )
 
     return {
-        "dados": resposta["dados"]
+        "dados": usuario_publico(resposta["dados"])
     }
 
 
@@ -91,7 +106,7 @@ def atualizar_usuario(usuario_id: int, dados: AtualizarUsuario):
         )
 
     return {
-        "dados": resposta["dados"]
+        "dados": usuario_publico(resposta["dados"])
     }
 
 

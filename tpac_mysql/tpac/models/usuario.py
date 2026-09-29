@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import Enum
+from sqlalchemy import Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -17,4 +18,5 @@ class Usuario(Base):
         nullable=False,
         default="direto",
     )
+    senha_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     criado_em: Mapped[datetime] = mapped_column(server_default=func.now())

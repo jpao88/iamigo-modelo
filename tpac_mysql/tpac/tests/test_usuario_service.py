@@ -26,11 +26,12 @@ class UsuarioRepositoryFake:
                 return usuario
         return None
 
-    def criar(self, nome, estilo_instrucao):
+    def criar(self, nome, estilo_instrucao, senha_hash=None):
         usuario = SimpleNamespace(
             id=self.proximo_id,
             nome=nome,
-            estilo_instrucao=estilo_instrucao
+            estilo_instrucao=estilo_instrucao,
+            senha_hash=senha_hash
         )
         self.proximo_id += 1
         self.usuarios.append(usuario)

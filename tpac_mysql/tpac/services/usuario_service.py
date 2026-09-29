@@ -2,6 +2,7 @@ from repositories.usuario_repository import UsuarioRepository
 from core.interpretador import interpretar_mensagem as interpretar_texto
 from core.ia_service import obter_resposta_ia
 from core.conversa import ConversaTarefa, ESPERANDO_PRAZO, ESPERANDO_PRIORIDADE
+from core.seguranca import gerar_hash_senha, verificar_senha
 from services.tarefa_service import TarefaService
 
 
@@ -20,7 +21,7 @@ class UsuarioService:
 
         return usuario
 
-    def criar_usuario(self, nome, estilo_instrucao):
+    def criar_usuario(self, nome, estilo_instrucao, senha=None):
         nome = nome.strip()
 
         if not nome:
@@ -38,7 +39,15 @@ class UsuarioService:
         if existente is not None:
             raise ValueError("Já existe um perfil com esse nome.")
 
-        return self.repository.criar(nome, estilo_instrucao)
+        senha_hash = None
+
+        if senha is not None:
+            if len(senha) < 6:
+                raise ValueError("A senha precisa ter pelo menos 6 caracteres.")
+
+            senha_hash = gerar_hash_senha(senha)
+
+        return self.repository.criar(nome, estilo_instrucao, senha_hash)
 
     def atualizar_usuario(self, usuario_id, nome, estilo_instrucao):
         usuario = self.repository.buscar_por_id(usuario_id)
@@ -72,6 +81,18 @@ class UsuarioService:
             raise ValueError("Usuário não encontrado.")
 
         self.repository.excluir(usuario_id)
+
+    def autenticar(self, nome, senha):
+        usuario = self.repository.buscar_por_nome(nome.strip())
+
+        if (
+            usuario is None
+            or not usuario.senha_hash
+            or not verificar_senha(senha, usuario.senha_hash)
+        ):
+            raise ValueError("Nome ou senha inválidos.")
+
+        return usuario
 
     def interpretar_mensagem(self, usuario_id, texto):
         usuario = self.repository.buscar_por_id(usuario_id)

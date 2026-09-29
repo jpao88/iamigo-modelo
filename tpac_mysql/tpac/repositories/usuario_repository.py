@@ -20,11 +20,12 @@ class UsuarioRepository:
             comando = select(Usuario).where(Usuario.id == usuario_id)
             return session.scalar(comando)
 
-    def criar(self, nome, estilo_instrucao):
+    def criar(self, nome, estilo_instrucao, senha_hash=None):
         with SessionLocal() as session:
             usuario = Usuario(
                 nome=nome,
-                estilo_instrucao=estilo_instrucao
+                estilo_instrucao=estilo_instrucao,
+                senha_hash=senha_hash
             )
             session.add(usuario)
             session.commit()

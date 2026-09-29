@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.rotas_usuarios import router as usuarios_router
 from api.rotas_tarefas import router as tarefas_router
+from api.rotas_auth import router as auth_router
 
 load_dotenv()
 
@@ -38,6 +39,7 @@ app.add_middleware(
 
 app.include_router(usuarios_router)
 app.include_router(tarefas_router)
+app.include_router(auth_router)
 
 
 @app.get("/")

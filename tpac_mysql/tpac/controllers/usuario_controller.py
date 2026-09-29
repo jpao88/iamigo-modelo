@@ -1,5 +1,6 @@
 import logging
 
+from core.seguranca import gerar_token_acesso
 from services.usuario_service import UsuarioService
 
 logger = logging.getLogger("uvicorn.error")
@@ -12,9 +13,9 @@ class UsuarioController:
     def listar_perfis(self):
         return self.service.listar_usuarios()
 
-    def criar_perfil(self, nome, estilo_instrucao):
+    def criar_perfil(self, nome, estilo_instrucao, senha=None):
         try:
-            usuario = self.service.criar_usuario(nome, estilo_instrucao)
+            usuario = self.service.criar_usuario(nome, estilo_instrucao, senha)
             return {
                 "sucesso": True,
                 "tipo": "SUCESSO",
@@ -168,6 +169,35 @@ class UsuarioController:
             }
         except Exception:
             logger.exception("Falha técnica em avancar_conversa")
+            return {
+                "sucesso": False,
+                "tipo": "FALHA_TECNICA",
+                "mensagem": "Não foi possível concluir a operação."
+            }
+
+    
+    def autenticar(self, nome, senha):
+        try:
+            usuario = self.service.autenticar(nome, senha)
+            token, expira_em = gerar_token_acesso(usuario.id, usuario.nome)
+            return {
+                "sucesso": True,
+                "tipo": "SUCESSO",
+                "dados": {
+                    "usuario": usuario,
+                    "access_token": token,
+                    "token_type": "bearer",
+                    "expires_in": expira_em
+                }
+            }
+        except ValueError as erro:
+            return {
+                "sucesso": False,
+                "tipo": "REGRA_NEGOCIO",
+                "mensagem": str(erro)
+            }
+        except Exception:
+            logger.exception("Falha técnica em autenticar")
             return {
                 "sucesso": False,
                 "tipo": "FALHA_TECNICA",
