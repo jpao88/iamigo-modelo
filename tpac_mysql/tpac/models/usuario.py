@@ -18,5 +18,11 @@ class Usuario(Base):
         nullable=False,
         default="direto",
     )
+    papel: Mapped[str] = mapped_column(
+        Enum("usuario", "admin", name="papel_enum"),
+        nullable=False,
+        default="usuario",
+        server_default="usuario",
+    )
     senha_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     criado_em: Mapped[datetime] = mapped_column(server_default=func.now())

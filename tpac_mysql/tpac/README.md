@@ -38,6 +38,17 @@ No terminal, dentro da pasta do projeto, execute:
 python main.py
 ```
 
+## 5. Aula web e testes da API
+
+- Aula web (frontend): https://frontend-aula-1409.vercel.app/?k=pjp-fq2mrAE
+- Os testes da API são feitos no Swagger: http://127.0.0.1:8000/docs
+
+Para abrir o Swagger, inicie a API antes, dentro da pasta do projeto:
+
+```bash
+uvicorn api_app:app --reload
+```
+
 ## Arquivos principais
 
 - `database.sql`: cria o banco, tabelas e dados de exemplo.

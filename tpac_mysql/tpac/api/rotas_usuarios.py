@@ -1,8 +1,9 @@
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from api.dependencias import exigir_dono_ou_admin
 from controllers.usuario_controller import UsuarioController
 
 router = APIRouter(
@@ -93,7 +94,11 @@ def criar_usuario(dados: NovoUsuario):
 
 
 @router.put("/{usuario_id}")
-def atualizar_usuario(usuario_id: int, dados: AtualizarUsuario):
+def atualizar_usuario(
+    usuario_id: int,
+    dados: AtualizarUsuario,
+    usuario_autenticado=Depends(exigir_dono_ou_admin)
+):
     resposta = controller.atualizar_perfil(
         usuario_id, dados.nome, dados.estilo_instrucao
     )
@@ -111,7 +116,10 @@ def atualizar_usuario(usuario_id: int, dados: AtualizarUsuario):
 
 
 @router.delete("/{usuario_id}", status_code=status.HTTP_204_NO_CONTENT)
-def excluir_usuario(usuario_id: int):
+def excluir_usuario(
+    usuario_id: int,
+    usuario_autenticado=Depends(exigir_dono_ou_admin)
+):
     resposta = controller.excluir_perfil(usuario_id)
 
     if not resposta["sucesso"]:

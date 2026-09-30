@@ -40,3 +40,20 @@ def obter_usuario_autenticado(
         raise _nao_autenticado("Token inválido ou expirado.")
 
     return resposta["dados"]
+
+
+def exigir_dono_ou_admin(
+    usuario_id: int,
+    usuario_autenticado=Depends(obter_usuario_autenticado)
+):
+    """Autorização: só o admin ou o próprio dono da conta podem continuar."""
+    if usuario_autenticado.papel == "admin":
+        return usuario_autenticado
+
+    if usuario_autenticado.id == usuario_id:
+        return usuario_autenticado
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Você não tem permissão para esta ação."
+    )
