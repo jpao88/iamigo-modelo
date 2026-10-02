@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IAmigo · Entrar</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="cartao">
+    <h1>IAmigo</h1>
+    <p class="subtitulo">Entre para ver suas tarefas</p>
+
+    <form id="form-login">
+      <label for="nome">Nome</label>
+      <input id="nome" type="text" autocomplete="username" required>
+
+      <label for="senha">Senha</label>
+      <input id="senha" type="password" autocomplete="current-password" required>
+
+      <button id="botao-entrar" type="submit">Entrar</button>
+    </form>
+
+    <p id="mensagem" class="mensagem" role="status" aria-live="polite"></p>
+  </main>
+
+  <script src="api.js"></script>
+  <script src="login.js"></script>
+</body>
+</html>
