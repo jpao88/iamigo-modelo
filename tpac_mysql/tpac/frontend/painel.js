@@ -31,7 +31,10 @@ async function carregarTarefas() {
     }
 
     if (!resposta.ok) {
-      mostrarErro(corpo.detail || "Não foi possível carregar as tarefas.");
+      const texto = typeof corpo.detail === "string"
+        ? corpo.detail
+        : "Dados inválidos na requisição.";
+      mostrarErro(texto);
       return;
     }
 
