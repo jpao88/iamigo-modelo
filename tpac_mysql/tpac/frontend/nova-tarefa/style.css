@@ -1,0 +1,82 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f5f7fb;
+  color: #202124;
+}
+
+.container {
+  width: min(100% - 32px, 460px);
+  margin: 40px auto;
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #dadce0;
+  border-radius: 16px;
+}
+
+h1 {
+  margin-top: 0;
+}
+
+.apoio {
+  color: #5f6368;
+}
+
+.campo {
+  margin-top: 16px;
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+input,
+select,
+button {
+  width: 100%;
+  padding: 12px;
+  font: inherit;
+}
+
+input,
+select {
+  border: 1px solid #bdc1c6;
+  border-radius: 10px;
+}
+
+input:focus,
+select:focus,
+button:focus {
+  outline: 3px solid #8ab4f8;
+  outline-offset: 2px;
+}
+
+button {
+  margin-top: 18px;
+  border: 0;
+  border-radius: 10px;
+  background: #1a73e8;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mensagem {
+  min-height: 24px;
+  margin-top: 16px;
+  font-weight: 700;
+}
+
+.mensagem.erro {
+  color: #b3261e;
+}
+
+.mensagem.sucesso {
+  color: #137333;
+}
